@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sustainable AI Data Center - 3D EVS Model</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #0d1527;
+    }
+    #webgl-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+    .glass-panel {
+      background: #0f172a;
+      border: 1px solid #334155;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="relative text-slate-100">
+
+  <div id="canvas-container" class="absolute inset-0 w-full h-full z-0">
+    <canvas id="webgl-canvas"></canvas>
+  </div>
+
+  <header class="absolute top-4 left-4 right-4 z-20 flex items-center justify-between pointer-events-none">
+    <div class="glass-panel px-4 py-2.5 rounded-2xl flex items-center gap-3 pointer-events-auto">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-400 flex items-center justify-center text-white">
+        <i class="fa-solid fa-leaf"></i>
+      </div>
+      <div>
+        <h1 class="text-sm font-bold">Green AI Data Center Architecture</h1>
+        <p class="text-xs text-slate-400">Group 21 • EVS (VEC301)</p>
+      </div>
+    </div>
+  </header>
+
+  <aside class="absolute left-4 top-24 bottom-6 w-80 glass-panel rounded-2xl p-4 flex flex-col z-20 pointer-events-auto">
+    <div class="flex items-center justify-between pb-3 border-b border-slate-700/60 mb-3">
+      <span class="text-xs font-semibold uppercase tracking-wider text-slate-300">System Inspector</span>
+    </div>
+    <div class="space-y-2 flex-1 overflow-y-auto">
+      <button onclick="focusComponent('racks')" class="w-full text-left p-3 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-cyan-400/50 transition">
+        <span class="text-xs font-bold text-cyan-300"><i class="fa-solid fa-server"></i> Liquid Immersion Racks</span>
+        <p class="text-[11px] text-slate-400 mt-1">PUE 1.03 - Direct immersion cooling</p>
+      </button>
+      <button onclick="focusComponent('piping')" class="w-full text-left p-3 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-blue-400/50 transition">
+        <span class="text-xs font-bold text-blue-300"><i class="fa-solid fa-droplet"></i> Fluid Conduits</span>
+        <p class="text-[11px] text-slate-400 mt-1">Zero water loss - Closed loop</p>
+      </button>
+      <button onclick="focusComponent('greenhouse')" class="w-full text-left p-3 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-amber-400/50 transition">
+        <span class="text-xs font-bold text-amber-300"><i class="fa-solid fa-wheat-awn"></i> Waste Heat → Greenhouse</span>
+        <p class="text-[11px] text-slate-400 mt-1">55°C-65°C effluent reuse</p>
+      </button>
+      <button onclick="focusComponent('microgrid')" class="w-full text-left p-3 rounded-xl bg-slate-800/60 border border-slate-700 hover:border-emerald-400/50 transition">
+        <span class="text-xs font-bold text-emerald-300"><i class="fa-solid fa-solar-panel"></i> Solar + BESS Microgrid</span>
+        <p class="text-[11px] text-slate-400 mt-1">24/7 Clean Energy</p>
+      </button>
+    </div>
+    <div class="pt-3 border-t border-slate-700/60 flex gap-1">
+      <button onclick="toggleAutoRotate()" class="flex-1 px-2 py-1.5 rounded-lg bg-slate-800 text-xs"><i class="fa-solid fa-arrows-rotate"></i> <span id="rot">Pause</span></button>
+      <button onclick="resetCamera()" class="flex-1 px-2 py-1.5 rounded-lg bg-slate-800 text-xs"><i class="fa-solid fa-compress"></i> Overview</button>
+    </div>
+  </aside>
+
+  <script>
+    let scene, camera, renderer, controls;
+    let autoRotate = true;
+    const targets = {
+      default: { cam: [24, 18, 26], look: [0, 2, 0] },
+      racks: { cam: [8, 9, 8], look: [-2, 3, 0] },
+      piping: { cam: [6, 7, 14], look: [2, 2, 3] },
+      greenhouse: { cam: [16, 10, 8], look: [8, 3, 2] },
+      microgrid: { cam: [-10, 15, -12], look: [-5, 6, -3] }
+    };
+    let targetCamPos = new THREE.Vector3(...targets.default.cam);
+    let targetLookPos = new THREE.Vector3(...targets.default.look);
+    const animObjs = { turbine: null, leds: [], pulses: [] };
+
+    window.onload = function() {
+      init();
+      build();
+      animate();
+    };
+
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
+      scene.fog = new THREE.FogExp2(0x87ceeb, 0.012);
+
+      camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 1000);
+      camera.position.set(...targets.default.cam);
+
+      renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('webgl-canvas'), antialias: true });
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
+
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.maxPolarAngle = Math.PI/2.05;
+
+      scene.add(new THREE.DirectionalLight(0xfff5e4, 1.4).position.set(30,45,20));
+      scene.add(new THREE.HemisphereLight(0xdbeafe, 0x334155, 0.7));
+      scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+    }
+
+    function build() {
+      const group = new THREE.Group();
+      scene.add(group);
+
+      // Island
+      const grass = new THREE.Mesh(new THREE.CylinderGeometry(20, 19, 1.6, 64), new THREE.MeshStandardMaterial({color: 0x3d7e35}));
+      grass.position.y = 0.8; grass.receiveShadow = true; group.add(grass);
+      const rock = new THREE.Mesh(new THREE.CylinderGeometry(19, 14, 5.5, 32), new THREE.MeshStandardMaterial({color: 0x222a36, flatShading: true}));
+      rock.position.y = -2.75; group.add(rock);
+
+      // DC
+      const dc = new THREE.Group(); dc.position.set(-4,1.6,-1); group.add(dc);
+      dc.add(new THREE.Mesh(new THREE.BoxGeometry(14,0.4,11), new THREE.MeshStandardMaterial({color:0x1e293b})).position.set(0,0.2,0));
+      dc.add(new THREE.Mesh(new THREE.BoxGeometry(14,6.2,0.5), new THREE.MeshStandardMaterial({color:0x0f172a})).position.set(0,3.3,-5.25));
+      dc.add(new THREE.Mesh(new THREE.BoxGeometry(0.5,6.2,11), new THREE.MeshStandardMaterial({color:0x0f172a})).position.set(-6.75,3.3,0));
+      dc.add(new THREE.Mesh(new THREE.BoxGeometry(13.8,6.1,0.15), new THREE.MeshPhysicalMaterial({color:0x88ccff, transparent:true, opacity:0.24, transmission:0.85})).position.set(0,3.3,5.25));
+
+      // Tanks
+      for (let i=0;i<3;i++) {
+        const t = new THREE.Mesh(new THREE.BoxGeometry(1.2,1.2,2), new THREE.MeshStandardMaterial({color:0x1b263b, transparent:true, opacity:0.7}));
+        t.position.set(-5.5+i*1.5,1.8,0); dc.add(t);
+        dc.add(new THREE.Mesh(new THREE.BoxGeometry(1.22,0.1,2.02), new THREE.MeshStandardMaterial({color:0x00f0ff, emissive:0x00f0ff, emissiveIntensity:0.6})).position.set(-5.5+i*1.5,1.3,0));
+      }
+
+      // Pipes
+      dc.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-1,2.1,2),new THREE.Vector3(3.5,2.1,2),new THREE.Vector3(4.5,1,2)]), 20, 0.12, 8, false), new THREE.MeshStandardMaterial({color:0x00f5ff, emissive:0x00c4df, emissineIntensity: 0.7})));
+      dc.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(1.5,2,2),new THREE.Vector3(3,1.6,3.2),new THREE.Vector3(10,1.6,1.5)]), 40, 0.14, 12, false), new THREE.MeshStandardMaterial({color:0xff7b00, emissive:0xff5100, emissiveIntensity:0.8})));
+
+      // Greenhouse
+      const gh = new THREE.Group(); gh.position.set(10.5,1.6,1.2); group.add(gh);
+      gh.add(new THREE.Mesh(new THREE.CylinderGeometry(4.0,4.0,0.1,16), new THREE.MeshStandardMaterial({color:0x3d271d})).position.y = 0.4);
+      gh.add(new THREE.Mesh(new THREE.SphereGeometry(4.2,16,12,0,Math.PI*2,0,Math.PI/2), new THREE.MeshPhysicalMaterial({color:0xdcfce7, transparent:true, opacity:0.4, transmission:0.9})).position.y = 0.4);
+      gh.add(new THREE.Mesh(new THREE.SphereGeometry(4.2,16,12,0,Math.PI*2,0,Math.PI/2), new THREE.MeshBasicMaterial({color:0x15803d, wireframe:true, opacity:0.45})).position.y = 0.4);
+
+      // Solar
+      const roof = new THREE.Group(); dc.add(roof);
+      const panelMat = new THREE.MeshStandardMaterial({color:0x1d3557, metalness:0.8});
+      for (let r=0;r<2;r++) for (let c=0;c<3;c++) {
+        const p = new THREE.Mesh(new THREE.BoxGeometry(2.4,0.08,2.0), panelMat);
+        p.position.set(-3.5+c*2.5, 6.9, -2 + r*2);
+        p.rotation.x = -Math.PI/6;
+        roof.add(p);
+      }
+
+      // Turbine
+      const turb = new THREE.Group(); turb.position.set(-12,1.6,-7); group.add(turb);
+      turb.add(new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.45,14,16), new three.MeshStandardMaterial({color:0xe2e8f0})).position.y = 7);
+      const blades = new THREE.Group(); blades.position.y = 14; turb.add(blades);
+      for (let b=0;b<3;b++) {
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.3,4.8,0.06), new THREE.MeshStandardMaterial({color:#ffffff}));
+        blade.position.x = Math.cos((b/3)*Math.PI*2)*2.4; blade.position.y = Math.sin((b/3)*Math.PI*2)*2.4;
+        blade.rotation.z = -((b/3)*Math.PI*2); blades.add(blade);
+      }
+      animObjs.turbine = blades;
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (animObjs.turbine) animObjs.turbine.rotation.z -= 0.03;
+      if (autoRotate) {
+        scene.rotation.y += 0.003;
+      }
+      camera.position.lerp(targetCamPos, 0.05);
+      controls.target.lerp(targetLookPos, 0.05);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    function focusComponent(k) {
+      autoRotate = false;
+      document.getElementByid('rot').innerText = 'Resume';
+      targetCamPos.set(...targets[k].cam);
+      targetLookPos.set(...targets[k].look);
+    }
+
+    function resetCamera() {
+      autoRotate = true;
+      document.getElementByid('rot').innerText = 'Pause';
+      targetCamPos.set(...targets.default.cam);
+      targetLookPos.set(...targets.default.look);
+    }
+
+    function toggleAutoRotate() {
+      autoRotate = !autoRotate;
+      document.getElementByid('rot').innerText = autoRotate ? 'Pause' : 'Resume';
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = innerWidth/innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+  </script>
+</body>
+</html>
